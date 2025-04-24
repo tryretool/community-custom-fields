@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# name: discourse-plugin-name
+# name: darren-test
 # about: TODO
 # meta_topic_id: TODO
 # version: 0.0.1
@@ -8,13 +8,13 @@
 # url: TODO
 # required_version: 2.7.0
 
-enabled_site_setting :plugin_name_enabled
+enabled_site_setting :darren_test_enabled
 
-module ::MyPluginModule
-  PLUGIN_NAME = "discourse-plugin-name"
+module ::DarrenTest
+  PLUGIN_NAME = "darren-test"
 end
 
-require_relative "lib/my_plugin_module/engine"
+require_relative "lib/darren_test/engine"
 
 after_initialize do
   # Code which should run after Rails has finished booting

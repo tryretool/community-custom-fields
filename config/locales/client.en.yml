@@ -3,7 +3,7 @@ en:
     admin:
       site_settings:
         categories:
-          TODO_plugin_name: "Plugin Name"
+          darren_test: "Darren Test"
   js:
-    discourse_plugin_name:
+    darren_test:
       placeholder: placeholder

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module ::MyPluginModule
+module ::DarrenTest
   class ExamplesController < ::ApplicationController
     requires_plugin PLUGIN_NAME
 
