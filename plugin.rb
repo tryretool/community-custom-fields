@@ -65,7 +65,7 @@ after_initialize do
   end
 
   on(:topic_created) do |topic, params, user|
-    topic.custom_fields["assignee_id"] ||= nil  # or any default value
+    topic.custom_fields["assignee_id"] ||= 0  # or any default value
     topic.custom_fields["status"] ||= "new"
     topic.save_custom_fields
   end
