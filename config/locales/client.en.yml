@@ -3,7 +3,7 @@ en:
     admin:
       site_settings:
         categories:
-          darren_test: "Darren Test"
+          community_custom_fields: "Community Custom Fields"
   js:
-    darren_test:
+    community_custom_fields:
       placeholder: placeholder
