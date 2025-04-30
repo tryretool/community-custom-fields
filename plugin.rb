@@ -22,6 +22,7 @@ after_initialize do
   end
 
   #############################################################################
+  # /config/routes.rb
 
   CommunityCustomFields::Engine.routes.draw do
     put '/:topic_id' => 'custom_fields#update'
@@ -61,5 +62,11 @@ after_initialize do
   
   add_to_serializer(:topic_view, :custom_fields) do
     object.topic.custom_fields.slice('assignee_id', 'status')
+  end
+
+  on(:topic_created) do |topic, params, user|
+    topic.custom_fields["assignee_id"] ||= nil  # or any default value
+    topic.custom_fields["status"] ||= "new"
+    topic.save_custom_fields
   end
 end
