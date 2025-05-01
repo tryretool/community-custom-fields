@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 CommunityCustomFields::Engine.routes.draw do
-  put '/:topic_id' => 'custom_fields#update'
+  put '/:topic_id' => 'custom_fields#update', as: 'custom_field'
 end
 
 Discourse::Application.routes.append do
