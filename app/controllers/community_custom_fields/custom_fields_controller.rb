@@ -1,4 +1,8 @@
+# frozen_string_literal: true
+
 class CommunityCustomFields::CustomFieldsController < ::ApplicationController
+  requires_plugin CommunityCustomFields::PLUGIN_NAME
+
   before_action :ensure_logged_in
   before_action :ensure_admin
 

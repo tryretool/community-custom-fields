@@ -2,7 +2,7 @@
 
 # name: community-custom-fields
 # about: Adds custom fields for using Discourse as a support platform
-# url: 
+# url: https://github.com/tryretool/community-custom-fields
 # version: 0.1
 # authors: Retool
 
