@@ -8,32 +8,13 @@
 
 enabled_site_setting :community_custom_fields_enabled
 
+module ::DiscourseSolved
+  PLUGIN_NAME = "community-custom-fields"
+end
+
+require_relative 'lib/community_custom_fields/engine.rb'
+
 after_initialize do
-  module ::CommunityCustomFields
-    class Engine < ::Rails::Engine
-      engine_name "community_custom_fields"
-      isolate_namespace CommunityCustomFields
-      config.autoload_paths << File.join(config.root, "lib")
-      scheduled_job_dir = "#{config.root}/app/jobs/scheduled"
-      config.to_prepare do
-        Rails.autoloaders.main.eager_load_dir(scheduled_job_dir) if Dir.exist?(scheduled_job_dir)
-      end
-    end
-  end
-
-  #############################################################################
-  # /config/routes.rb
-
-  CommunityCustomFields::Engine.routes.draw do
-    put '/:topic_id' => 'custom_fields#update'
-  end
-
-  Discourse::Application.routes.append do
-    mount ::CommunityCustomFields::Engine, at: '/admin/plugins/community-custom-fields'
-  end
-
-  #############################################################################
-
   require_dependency 'application_controller'
   class CommunityCustomFields::CustomFieldsController < ::ApplicationController
     before_action :ensure_logged_in
@@ -65,7 +46,7 @@ after_initialize do
   end
 
   on(:topic_created) do |topic, params, user|
-    topic.custom_fields["assignee_id"] ||= 0  # or any default value
+    topic.custom_fields["assignee_id"] ||= 0
     topic.custom_fields["status"] ||= "new"
     topic.save_custom_fields
   end
