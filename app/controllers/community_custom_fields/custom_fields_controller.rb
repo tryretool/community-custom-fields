@@ -8,14 +8,18 @@ class CommunityCustomFields::CustomFieldsController < ::ApplicationController
 
   def update
     topic = Topic.find(params[:topic_id])
-    custom = params[:custom_field] || params.permit(:assignee_id, :status)
-    topic.custom_fields["assignee_id"] = custom[:assignee_id].to_i if custom[:assignee_id].present?
-    topic.custom_fields["status"] = custom[:status] if custom[:status].present?
+    topic.custom_fields.merge!(custom_fields_params)
     if topic.save_custom_fields
       render json: success_json
     else
       Rails.logger.error("Failed to save custom fields for topic #{topic.id}: #{topic.errors.full_messages}")
       render json: { error: topic.errors.full_messages }, status: 422
     end
+  end
+
+  private
+
+  def custom_fields_params
+    params.require(:custom_field).permit(CommunityCustomFields::CUSTOM_FIELD_NAMES)
   end
 end
