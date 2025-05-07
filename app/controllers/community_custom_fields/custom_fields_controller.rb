@@ -20,6 +20,6 @@ class CommunityCustomFields::CustomFieldsController < ::ApplicationController
   private
 
   def custom_fields_params
-    params.require(:custom_field).permit(CommunityCustomFields::CUSTOM_FIELD_NAMES)
+    params.require(:custom_field).permit(*CommunityCustomFields::CUSTOM_FIELDS.keys)
   end
 end

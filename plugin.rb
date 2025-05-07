@@ -10,45 +10,35 @@ enabled_site_setting :community_custom_fields_enabled
 
 module ::CommunityCustomFields
   PLUGIN_NAME = "community-custom-fields"
-  CUSTOM_FIELD_NAMES = %i[
-    assignee_id
-    first_assigned_to_id
-    first_assigned_at
-    last_assigned_at
-    last_action_by_assignee_at
-    priority
-    product_area
-    status
-    snoozed_until
-  ]
-  CUSTOM_FIELD_TYPES = %i[
-    integer
-    integer
-    datetime
-    datetime
-    datetime
-    string
-    string
-    string
-    datetime
-  ]
+  CUSTOM_FIELDS = {
+    assignee_id: :integer,
+    first_assigned_to_id: :integer,
+    first_assigned_at: :datetime,
+    last_assigned_at: :datetime,
+    last_action_by_assignee_at: :datetime,
+    priority: :string,
+    product_area: :string,
+    status: :string,
+    snoozed_until: :datetime
+  }
 end
 
 require_relative 'lib/community_custom_fields/engine.rb'
 
 after_initialize do
-  CommunityCustomFields::CUSTOM_FIELD_NAMES.each_with_index do |field, i|
-    Topic.register_custom_field_type(field, CommunityCustomFields::CUSTOM_FIELD_TYPES[i])
+  CommunityCustomFields::CUSTOM_FIELDS.each do |name, type|
+    Topic.register_custom_field_type(name, type)
   end
 
-  TopicList.preloaded_custom_fields.merge(CommunityCustomFields::CUSTOM_FIELD_NAMES)
+  TopicList.preloaded_custom_fields.merge(CommunityCustomFields::CUSTOM_FIELDS.keys)
   
   add_to_serializer(:topic_view, :custom_fields) do
-    object.topic.custom_fields.slice(*CommunityCustomFields::CUSTOM_FIELD_NAMES)
+    object.topic.custom_fields.slice(*CommunityCustomFields::CUSTOM_FIELDS.keys)
   end
 
   on(:topic_created) do |topic, params, user|
     topic.custom_fields[:status] = "new"
+    topic.custom_fields[:assignee_id] = 0
     topic.save_custom_fields
   end
 end
