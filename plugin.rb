@@ -41,4 +41,14 @@ after_initialize do
     topic.custom_fields[:assignee_id] = 0
     topic.save_custom_fields
   end
+
+  on(:post_created) do |post, _opts, user|
+    topic = post.topic
+    
+    if (topic.custom_fields[:status] == "snoozed") && !user.admin
+      topic.custom_fields[:status] = "open"
+      topic.custom_fields[:snoozed_until] = nil
+      topic.save_custom_fields
+    end
+  end
 end
