@@ -10,6 +10,7 @@ class CommunityCustomFields::CustomFieldsController < ::ApplicationController
     topic = Topic.find(params[:topic_id])
     topic.custom_fields.merge!(custom_fields_params)
     if topic.save_custom_fields
+      topic.touch
       render json: success_json
     else
       Rails.logger.error("Failed to save custom fields for topic #{topic.id}: #{topic.errors.full_messages}")
