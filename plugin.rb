@@ -19,7 +19,8 @@ module ::CommunityCustomFields
     priority: :string,
     product_area: :string,
     status: :string,
-    snoozed_until: :datetime
+    snoozed_until: :datetime,
+    waiting_since: :datetime
   }
 end
 
@@ -36,16 +37,22 @@ after_initialize do
     object.topic.custom_fields.slice(*CommunityCustomFields::CUSTOM_FIELDS.keys)
   end
 
-  on(:topic_created) do |topic, params, user|
-    topic.custom_fields[:status] = "new"
+  on(:topic_created) do |topic, _opts, _user|
     topic.custom_fields[:assignee_id] = 0
+    topic.custom_fields[:status] = "new"
+    topic.custom_fields[:waiting_since] = Time.now.utc
     topic.save_custom_fields
   end
 
   on(:post_created) do |post, _opts, user|
     topic = post.topic
-    
-    if (topic.custom_fields[:status] == "snoozed") && !user.admin
+
+    if user.admin
+      # check if user is an admin and update the `waiting_since` field, if so
+      topic.custom_fields[:waiting_since] = Time.now.utc
+      topic.save_custom_fields
+    elsif topic.custom_fields[:status] == "snoozed"
+      # check if new post belongs to a snoozed topic and update status
       topic.custom_fields[:status] = "open"
       topic.custom_fields[:snoozed_until] = nil
       topic.save_custom_fields
