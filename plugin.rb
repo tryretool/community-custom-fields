@@ -38,7 +38,7 @@ after_initialize do
   end
 
   on(:topic_created) do |topic, _opts, user|
-    return unless topic.archetype == "regular" && user.id > 0
+    next unless topic.archetype == "regular" && user.id > 0
 
     topic.custom_fields[:assignee_id] = 0
     topic.custom_fields[:status] = "new"
@@ -47,7 +47,7 @@ after_initialize do
   end
 
   on(:post_created) do |post, _opts, user|
-    return unless post.archetype == "regular" && user.id > 0
+    next unless post.archetype == "regular" && user.id > 0
 
     topic = post.topic
 
