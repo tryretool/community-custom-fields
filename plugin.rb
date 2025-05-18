@@ -37,7 +37,9 @@ after_initialize do
     object.topic.custom_fields.slice(*CommunityCustomFields::CUSTOM_FIELDS.keys)
   end
 
-  on(:topic_created) do |topic, _opts, _user|
+  on(:topic_created) do |topic, _opts, user|
+    return unless topic.archetype == "regular" && user.id > 0
+
     topic.custom_fields[:assignee_id] = 0
     topic.custom_fields[:status] = "new"
     topic.custom_fields[:waiting_since] = Time.now.utc
@@ -45,9 +47,11 @@ after_initialize do
   end
 
   on(:post_created) do |post, _opts, user|
+    return unless post.archetype == "regular" && user.id > 0
+
     topic = post.topic
 
-    if user.admin && user.id > 0
+    if user.admin
       # check if user is an admin and update the `waiting_since` field, if so
       topic.custom_fields[:waiting_since] = Time.now.utc
       topic.save_custom_fields
