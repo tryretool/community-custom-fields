@@ -47,7 +47,7 @@ after_initialize do
   on(:post_created) do |post, _opts, user|
     topic = post.topic
 
-    if user.admin
+    if user.admin && user.id > 0
       # check if user is an admin and update the `waiting_since` field, if so
       topic.custom_fields[:waiting_since] = Time.now.utc
       topic.save_custom_fields
