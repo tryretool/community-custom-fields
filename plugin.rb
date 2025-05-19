@@ -47,7 +47,7 @@ after_initialize do
   end
 
   on(:post_created) do |post, _opts, user|
-    next unless post.archetype == 'regular' && post.post_type == 1 && user.id > 0
+    next unless post.archetype == "regular" && post.post_type == 1 && user.id > 0
 
     topic = post.topic
 
