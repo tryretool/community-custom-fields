@@ -13,14 +13,16 @@ module ::CommunityCustomFields
   CUSTOM_FIELDS = {
     assignee_id: :integer,
     first_assigned_to_id: :integer,
-    first_assigned_at: :datetime,
+    first_assigned_at: :datetime, 
+    last_assigned_to_id: :integer,
     last_assigned_at: :datetime,
-    last_action_by_assignee_at: :datetime,
     priority: :string,
     product_area: :string,
     status: :string,
+    outcome: :string,
     snoozed_until: :datetime,
-    waiting_since: :datetime
+    waiting_since: :datetime,
+    waiting_id: :integer
   }
 end
 
@@ -43,23 +45,30 @@ after_initialize do
     topic.custom_fields[:assignee_id] = 0
     topic.custom_fields[:status] = "new"
     topic.custom_fields[:waiting_since] = Time.now.utc
+    topic.custom_fields[:waiting_id] = user.id
     topic.save_custom_fields
   end
 
   on(:post_created) do |post, _opts, user|
-    next unless post.archetype == "regular" && post.post_type == 1 && user.id > 0
+    next unless post.archetype == "regular" && user.id > 0 && post.post_type == 1
 
     topic = post.topic
 
     if user.admin
-      # check if user is an admin and update the `waiting_since` field, if so
-      topic.custom_fields[:waiting_since] = Time.now.utc
-      topic.save_custom_fields
-    elsif topic.custom_fields[:status] == "snoozed"
-      # check if new post belongs to a snoozed topic and update status
-      topic.custom_fields[:status] = "open"
-      topic.custom_fields[:snoozed_until] = nil
-      topic.save_custom_fields
+      topic.custom_fields[:waiting_since] = nil
+      topic.custom_fields[:waiting_id] = nil
+    else 
+      if user.id != topic.custom_fields[:waiting_id]
+        topic.custom_fields[:waiting_since] = Time.now.utc
+        topic.custom_fields[:waiting_id] = user.id
+      end
+
+      if topic.custom_fields[:status] == "snoozed"
+        topic.custom_fields[:status] = "open"
+        topic.custom_fields[:snoozed_until] = nil
+      end
     end
+
+    topic.save_custom_fields
   end
 end
