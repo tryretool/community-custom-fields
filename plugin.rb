@@ -60,7 +60,7 @@ after_initialize do
       topic.custom_fields[:waiting_since] = nil
       topic.custom_fields[:waiting_id] = nil
     else 
-      if user.id != topic.custom_fields[:waiting_id]
+      if user.id != topic.custom_fields[:waiting_id].to_i
         topic.custom_fields[:waiting_since] = Time.now.utc.iso8601
         topic.custom_fields[:waiting_id] = user.id
       end
