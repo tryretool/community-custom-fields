@@ -44,11 +44,11 @@ after_initialize do
     next if user.id < 0
 
     topic.custom_fields[:status] = "new"
-    
-    if (!user.admin) {
+
+    if (!user.admin) 
       topic.custom_fields[:waiting_since] = Time.now.utc.iso8601
       topic.custom_fields[:waiting_id] = user.id
-    }
+    end
 
     topic.save_custom_fields
   end
