@@ -40,19 +40,24 @@ after_initialize do
   end
 
   on(:topic_created) do |topic, _opts, user|
-    next unless topic.archetype == "regular" && user.id > 0
+    next if topic.archetype != "regular"
+    next if user.id < 0
 
     topic.custom_fields[:status] = "new"
-    topic.custom_fields[:waiting_since] = Time.now.utc.iso8601
-    topic.custom_fields[:waiting_id] = user.id
+    
+    if (!user.admin) {
+      topic.custom_fields[:waiting_since] = Time.now.utc.iso8601
+      topic.custom_fields[:waiting_id] = user.id
+    }
+
     topic.save_custom_fields
   end
 
   on(:post_created) do |post, _opts, user|
-    next unless post.archetype == "regular"
-    next unless post.post_type == 1
-    next if post.post_number == 1
+    next if post.archetype != "regular"
     next if user.id < 0
+    next if post.post_type != 1
+    next if post.post_number == 1
 
     topic = post.topic
 
