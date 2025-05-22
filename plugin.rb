@@ -42,15 +42,17 @@ after_initialize do
   on(:topic_created) do |topic, _opts, user|
     next unless topic.archetype == "regular" && user.id > 0
 
-    topic.custom_fields[:assignee_id] = 0
     topic.custom_fields[:status] = "new"
-    topic.custom_fields[:waiting_since] = Time.now.utc
+    topic.custom_fields[:waiting_since] = Time.now.utc.iso8601
     topic.custom_fields[:waiting_id] = user.id
     topic.save_custom_fields
   end
 
   on(:post_created) do |post, _opts, user|
-    next unless post.archetype == "regular" && user.id > 0 && post.post_type == 1
+    next unless post.archetype == "regular"
+    next unless post.post_type == 1
+    next if post.post_number == 1
+    next if user.id < 0
 
     topic = post.topic
 
@@ -59,7 +61,7 @@ after_initialize do
       topic.custom_fields[:waiting_id] = nil
     else 
       if user.id != topic.custom_fields[:waiting_id]
-        topic.custom_fields[:waiting_since] = Time.now.utc
+        topic.custom_fields[:waiting_since] = Time.now.utc.iso8601
         topic.custom_fields[:waiting_id] = user.id
       end
 
