@@ -50,7 +50,7 @@ after_initialize do
     topic.custom_fields[:status] = "new"
 
     if !user.admin
-      topic.custom_fields[:waiting_since] = Time.now.utc.iso8601
+      topic.custom_fields[:waiting_since] = Time.current.iso8601
       topic.custom_fields[:waiting_id] = user.id
     end
 
@@ -70,7 +70,7 @@ after_initialize do
       topic.custom_fields[:waiting_id] = nil
     else 
       if user.id != topic.custom_fields[:waiting_id].to_i
-        topic.custom_fields[:waiting_since] = Time.now.utc.iso8601
+        topic.custom_fields[:waiting_since] = Time.current.iso8601
         topic.custom_fields[:waiting_id] = user.id
       end
 
@@ -80,12 +80,15 @@ after_initialize do
       end
 
       if topic.custom_fields[:status] == "closed"
+        # this handles an edge case where `closed_at` was never assigned
+        topic.custom_fields[:closed_at] ||= Time.current.iso8601
+
         if topic.custom_fields[:last_assigned_to_id].nil? || Time.iso8601(topic.custom_fields[:closed_at]) < 1.month.ago.iso8601
           topic.custom_fields[:status] = "new"
         else
           topic.custom_fields[:status] = "open"
           topic.custom_fields[:assignee_id] = topic.custom_fields[:last_assigned_to_id]
-          topic.custom_fields[:last_assigned_at] = Time.now.utc.iso8601
+          topic.custom_fields[:last_assigned_at] = Time.current.iso8601
         end
         topic.custom_fields[:outcome] = nil
         topic.custom_fields[:closed_at] = nil
