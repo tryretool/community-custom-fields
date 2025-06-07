@@ -23,6 +23,7 @@ module ::CommunityCustomFields
     product_area: :string,
     status: :string,
     outcome: :string,
+    closed_at: :datetime,
     snoozed_until: :datetime,
     waiting_since: :datetime,
     waiting_id: :integer
@@ -76,6 +77,18 @@ after_initialize do
       if topic.custom_fields[:status] == "snoozed"
         topic.custom_fields[:status] = "open"
         topic.custom_fields[:snoozed_until] = nil
+      end
+
+      if topic.custom_fields[:status] == "closed"
+        if topic.custom_fields[:last_assigned_to_id].nil? || Time.iso8601(topic.custom_fields[:closed_at]) < 1.month.ago.iso8601
+          topic.custom_fields[:status] = "new"
+        else
+          topic.custom_fields[:status] = "open"
+          topic.custom_fields[:assignee_id] = topic.custom_fields[:last_assigned_to_id]
+          topic.custom_fields[:last_assigned_at] = Time.now.utc.iso8601
+        end
+        topic.custom_fields[:outcome] = nil
+        topic.custom_fields[:closed_at] = nil
       end
     end
 
