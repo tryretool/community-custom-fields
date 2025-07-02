@@ -93,6 +93,10 @@ after_initialize do
         topic.custom_fields[:outcome] = nil
         topic.custom_fields[:closed_at] = nil
       end
+
+      if topic.custom_fields[:status].nil?
+        topic.custom_fields[:status] = "new"
+      end
     end
 
     topic.save_custom_fields
