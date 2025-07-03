@@ -44,8 +44,8 @@ after_initialize do
   end
 
   on(:topic_created) do |topic, _opts, user|
-    next if topic.archetype != "regular"
-    next if user.id < 0
+    next unless topic.archetype == "regular"
+    next unless user.id > 0
 
     topic.custom_fields[:status] = "new"
 
@@ -58,16 +58,38 @@ after_initialize do
   end
 
   on(:post_created) do |post, _opts, user|
-    next if post.archetype != "regular"
-    next if user.id < 0
-    next if post.post_type != 1
+    next unless post.archetype == "regular"
+    next unless user.id > 0
+    next unless post.post_type == 1 || post.post_type == 4
     next if post.post_number == 1
-
+    
     topic = post.topic
+    topic.custom_fields[:status] ||= "new"
 
-    if user.admin
+    if user.admin && post.post_type == 1
       topic.custom_fields[:waiting_since] = nil
       topic.custom_fields[:waiting_id] = nil
+    elsif user.admin && post.post_type == 4
+      if topic.custom_fields[:status] == "snoozed"
+        topic.custom_fields[:status] = "open"
+        topic.custom_fields[:snoozed_until] = nil
+      end
+
+      if topic.custom_fields[:status] == "closed"
+        # this handles an edge case where `closed_at` was never set
+        topic.custom_fields[:closed_at] ||= Time.current.iso8601
+
+        if topic.custom_fields[:last_assigned_to_id].nil?
+          topic.custom_fields[:status] = "new"
+        else
+          topic.custom_fields[:status] = "open"
+          topic.custom_fields[:assignee_id] = topic.custom_fields[:last_assigned_to_id]
+          topic.custom_fields[:last_assigned_at] = Time.current.iso8601
+        end
+        
+        topic.custom_fields[:outcome] = nil
+        topic.custom_fields[:closed_at] = nil
+      end
     else 
       if user.id != topic.custom_fields[:waiting_id].to_i
         topic.custom_fields[:waiting_since] = Time.current.iso8601
@@ -80,7 +102,7 @@ after_initialize do
       end
 
       if topic.custom_fields[:status] == "closed"
-        # this handles an edge case where `closed_at` was never assigned
+        # this handles an edge case where `closed_at` was never set
         topic.custom_fields[:closed_at] ||= Time.current.iso8601
 
         if topic.custom_fields[:last_assigned_to_id].nil? || Time.iso8601(topic.custom_fields[:closed_at]) < 1.month.ago.iso8601
@@ -93,12 +115,8 @@ after_initialize do
         topic.custom_fields[:outcome] = nil
         topic.custom_fields[:closed_at] = nil
       end
-
-      if topic.custom_fields[:status].nil?
-        topic.custom_fields[:status] = "new"
-      end
     end
-
+    
     topic.save_custom_fields
   end
 end
