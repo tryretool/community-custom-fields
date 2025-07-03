@@ -45,7 +45,7 @@ after_initialize do
 
   on(:topic_created) do |topic, _opts, user|
     next unless topic.archetype == "regular"
-    next unless user.id > 0
+    next if user.id <= 0
 
     topic.custom_fields[:status] = "new"
 
@@ -59,7 +59,7 @@ after_initialize do
 
   on(:post_created) do |post, _opts, user|
     next unless post.archetype == "regular"
-    next unless user.id > 0
+    next if user.id <= 0
     next unless post.post_type == 1 || post.post_type == 4
     next if post.post_number == 1
     
