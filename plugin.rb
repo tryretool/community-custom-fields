@@ -112,6 +112,7 @@ after_initialize do
           topic.custom_fields[:assignee_id] = topic.custom_fields[:last_assigned_to_id]
           topic.custom_fields[:last_assigned_at] = Time.current.iso8601
         end
+        
         topic.custom_fields[:outcome] = nil
         topic.custom_fields[:closed_at] = nil
       end

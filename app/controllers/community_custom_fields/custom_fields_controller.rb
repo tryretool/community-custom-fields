@@ -7,7 +7,7 @@ class CommunityCustomFields::CustomFieldsController < ::ApplicationController
   before_action :ensure_admin
 
   def update
-    topic = Topic.find(params[:topic_id])
+    topic = Topic.unscoped.find(params[:topic_id])
     topic.custom_fields.merge!(custom_fields_params)
     if topic.save_custom_fields
       topic.touch
