@@ -128,7 +128,8 @@ after_initialize do
       topic: topic,
       from_status: previous_status,
       source: "post_creation",
-      assignee_id: previous_assignee_id
+      assignee_id: previous_assignee_id,
+      post_id: post.id
     )
   end
 end

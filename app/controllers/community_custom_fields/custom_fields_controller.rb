@@ -22,7 +22,8 @@ class CommunityCustomFields::CustomFieldsController < ::ApplicationController
         topic: topic,
         from_status: previous_status,
         source: "api_update",
-        assignee_id: previous_assignee_id
+        assignee_id: previous_assignee_id,
+        user_id: current_user.id
       )
       topic.touch
       render json: success_json

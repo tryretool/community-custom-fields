@@ -6,17 +6,26 @@ module CommunityCustomFields
 
     belongs_to :topic, class_name: "::Topic"
     belongs_to :assignee, class_name: "::User", optional: true
+    belongs_to :user, class_name: "::User", optional: true
+    belongs_to :post, class_name: "::Post", optional: true
 
-    def self.record(topic:, from_status:, source:, assignee_id:)
+    def self.record(topic:, from_status:, source:, assignee_id:, user_id: nil, post_id: nil)
       to_status = topic.custom_fields["status"]
       return if to_status.blank? || to_status == from_status
+
+      last_change = where(topic_id: topic.id).order(:id).last
+      started_at = last_change&.created_at || topic.created_at
+      duration = (Time.current - started_at).to_i
 
       create!(
         topic_id: topic.id,
         from_status: from_status,
         to_status: to_status,
         source: source,
-        assignee_id: assignee_id
+        assignee_id: assignee_id,
+        user_id: user_id,
+        post_id: post_id,
+        duration: duration
       )
     end
   end
