@@ -69,6 +69,7 @@ after_initialize do
     topic.custom_fields[:status] ||= "new"
     previous_status = topic.custom_fields[:status]
     previous_assignee_id = topic.custom_fields[:assignee_id]
+    previous_status_at = TopicCustomField.where(topic_id: topic.id, name: "status").pick(:created_at)
 
     if user.admin && post.post_type == 1
       topic.custom_fields[:waiting_since] = nil
@@ -129,7 +130,8 @@ after_initialize do
       from_status: previous_status,
       source: "post_creation",
       assignee_id: previous_assignee_id,
-      post_id: post.id
+      post_id: post.id,
+      previous_status_at: previous_status_at
     )
   end
 end

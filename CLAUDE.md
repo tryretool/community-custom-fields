@@ -35,7 +35,7 @@ Row columns:
 - **`from_status` / `to_status`** — the transition; `from_status` is null when the topic had no prior status.
 - **`assignee_id`** — the assignee *before* the change (attributes the change to whoever owned the ticket during the status being left).
 - **`user_id`** (api_update) / **`post_id`** (post_creation) — what triggered the change; only one is set per row.
-- **`duration`** — seconds spent in the status being left, measured from the previous recorded change (or `topic.created_at` for the first change).
+- **`duration`** — seconds spent in the status being left. Measured from the prior recorded change; for a topic with no table entry yet, from when the current status was set (its `topic_custom_fields` row); otherwise from `topic.created_at`.
 - **`source`** — `"api_update"` or `"post_creation"`.
 
 ## Commands

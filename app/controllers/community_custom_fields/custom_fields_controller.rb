@@ -16,6 +16,7 @@ class CommunityCustomFields::CustomFieldsController < ::ApplicationController
 
     previous_status = topic.custom_fields["status"]
     previous_assignee_id = topic.custom_fields["assignee_id"]
+    previous_status_at = TopicCustomField.where(topic_id: topic.id, name: "status").pick(:created_at)
     topic.custom_fields.merge!(fields)
     if topic.save_custom_fields
       CommunityCustomFields::TopicStatusChange.record(
@@ -23,7 +24,8 @@ class CommunityCustomFields::CustomFieldsController < ::ApplicationController
         from_status: previous_status,
         source: "api_update",
         assignee_id: previous_assignee_id,
-        user_id: current_user.id
+        user_id: current_user.id,
+        previous_status_at: previous_status_at
       )
       topic.touch
       render json: success_json
