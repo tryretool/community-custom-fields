@@ -28,6 +28,8 @@ module ::CommunityCustomFields
     waiting_since: :datetime,
     waiting_id: :integer
   }
+
+  STATUSES = %w[new open snoozed closed]
 end
 
 require_relative 'lib/community_custom_fields/engine.rb'
@@ -65,6 +67,8 @@ after_initialize do
     
     topic = post.topic
     topic.custom_fields[:status] ||= "new"
+    previous_status = topic.custom_fields[:status]
+    previous_assignee_id = topic.custom_fields[:assignee_id]
 
     if user.admin && post.post_type == 1
       topic.custom_fields[:waiting_since] = nil
@@ -119,5 +123,12 @@ after_initialize do
     end
     
     topic.save_custom_fields
+
+    CommunityCustomFields::TopicStatusChange.record(
+      topic: topic,
+      from_status: previous_status,
+      source: "post_creation",
+      assignee_id: previous_assignee_id
+    )
   end
 end

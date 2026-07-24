@@ -8,8 +8,22 @@ class CommunityCustomFields::CustomFieldsController < ::ApplicationController
 
   def update
     topic = Topic.unscoped.find(params[:topic_id])
-    topic.custom_fields.merge!(custom_fields_params)
+    fields = custom_fields_params
+
+    if fields.key?("status") && !CommunityCustomFields::STATUSES.include?(fields["status"])
+      return render json: { error: "Invalid status: #{fields["status"].inspect}" }, status: 422
+    end
+
+    previous_status = topic.custom_fields["status"]
+    previous_assignee_id = topic.custom_fields["assignee_id"]
+    topic.custom_fields.merge!(fields)
     if topic.save_custom_fields
+      CommunityCustomFields::TopicStatusChange.record(
+        topic: topic,
+        from_status: previous_status,
+        source: "api_update",
+        assignee_id: previous_assignee_id
+      )
       topic.touch
       render json: success_json
     else
