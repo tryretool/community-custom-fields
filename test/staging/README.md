@@ -42,16 +42,25 @@ environment at run time.
 
 ## What it checks
 
-- `topic_created` seeds `status="new"` and records **no** history row.
-- `api_update` transition → row with `source="api_update"`, acting `user_id`,
-  null `post_id`, and a non-negative `duration`.
+**`api_update` (admin PUT):**
+- Every ordered status transition among `new/open/snoozed/closed` (all 12 pairs)
+  → a row with `source="api_update"`, the acting `user_id`, null `post_id`, and
+  a non-negative `duration`.
 - Invalid status → `422`, nothing persisted or recorded.
-- An update that doesn't change status records no row.
-- Customer reply reopening a snoozed topic → `post_creation` row with the
-  triggering `post_id`, null `user_id`, and the pre-change `assignee_id`.
-- Admin whisper reopening a closed topic (skipped if whispers are disabled).
-- Admin regular reply that only clears `waiting_*` records no row.
-- All of `new/open/snoozed/closed` are accepted by the endpoint.
+- An update that changes no status → no row.
+- The row is attributed to the assignee *before* the change.
+
+**`post_created`:**
+- Customer reply reopening a snoozed topic → `post_creation` row (triggering
+  `post_id`, null `user_id`, pre-change `assignee_id`).
+- Customer reply to a closed topic: recent + last-assigned → `open` (reassigned);
+  no last-assignee → `new`; closed > 1 month ago → `new`.
+- Customer reply to a new/open topic → sets `waiting_*`, records no row.
+- Admin whisper reopening snoozed → `open`, and closed → `open`/`new`
+  (skipped if whispers are disabled).
+- Admin whisper on an open topic → no change, no row.
+- Admin regular reply → clears `waiting_*`, records no row.
+- `topic_created` seeds `status="new"` and records no row.
 
 ## Safety notes
 
@@ -63,3 +72,7 @@ environment at run time.
 - If `CUSTOMER_USERNAME` is unset it creates `ccf_test_customer`; on instances
   with restricted signup this may fail — set `CUSTOMER_USERNAME` to an existing
   non-admin user instead.
+- A full run creates ~30 topics. The suite honors rate limits automatically
+  (it waits out any `429` and retries), so on a heavily rate-limited instance a
+  run can take a few minutes; an admin/API key exempt from create limits is
+  fastest.

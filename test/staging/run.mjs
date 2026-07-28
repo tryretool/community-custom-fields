@@ -45,8 +45,11 @@ function reqEnv(name) {
   return v;
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 // ---- HTTP ----
-async function api(method, path, { body, username } = {}) {
+async function api(method, path, opts = {}, attempt = 0) {
+  const { body, username } = opts;
   const headers = {
     "Api-Key": cfg.key,
     "Api-Username": username || cfg.admin,
@@ -65,6 +68,13 @@ async function api(method, path, { body, username } = {}) {
     json = text ? JSON.parse(text) : null;
   } catch {
     /* non-JSON response */
+  }
+  // Honor Discourse rate limits (topic/post creation, per-IP, Data Explorer "block" mode).
+  if (res.status === 429 && attempt < 6) {
+    const wait = Math.min((json?.extras?.wait_seconds ?? 10) + 1, 60);
+    console.log(`  … rate limited on ${method} ${path.split("?")[0]}; waiting ${wait}s`);
+    await sleep(wait * 1000);
+    return api(method, path, opts, attempt + 1);
   }
   return { status: res.status, ok: res.ok, json, text };
 }
@@ -130,6 +140,7 @@ async function createTopic(username) {
       title: title(),
       raw: "Automated staging test topic body, comfortably long enough to pass validations.",
       category: categoryId,
+      skip_validations: true, // API-only; disables rate limits so the suite can create many topics
     },
   });
   if (!r.ok) throw new Error(`createTopic failed: ${snippet(r)}`);
@@ -141,6 +152,7 @@ async function reply(username, topicId, { whisper } = {}) {
   const body = {
     topic_id: topicId,
     raw: "Automated staging test reply body, comfortably long enough to pass.",
+    skip_validations: true, // API-only; disables rate limits
   };
   if (whisper) body.whisper = "true";
   const r = await api("POST", "/posts.json", { username, body });
@@ -156,6 +168,18 @@ async function customFields(topicId) {
 
 const setFields = (topicId, custom_field) =>
   api("PUT", `/admin/plugins/community-custom-fields/${topicId}.json`, { body: { custom_field } });
+
+// create a fresh topic as admin (topic_created seeds status="new")
+async function freshTopic() {
+  const { topicId } = await createTopic(cfg.admin);
+  return topicId;
+}
+
+// drive a topic into a precondition state via api_update (itself records api_update rows)
+async function seed(topicId, custom_field) {
+  const r = await setFields(topicId, custom_field);
+  if (r.status !== 200) throw new Error(`seed ${JSON.stringify(custom_field)} failed: ${snippet(r)}`);
+}
 
 // ---- Data Explorer (read TopicStatusChange rows) ----
 const HISTORY_SQL = `-- [params]
@@ -211,93 +235,185 @@ const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 
 // ---- tests ----
+const STATUSES = ["new", "open", "snoozed", "closed"];
+const iso = (ms) => new Date(ms).toISOString();
+
 test("topic_created seeds status=new and records no history row", async () => {
-  const { topicId } = await createTopic(cfg.admin);
+  const topicId = await freshTopic();
   eq((await customFields(topicId)).status, "new", "status after creation");
   eq((await historyRows(topicId)).length, 0, "history rows after creation");
 });
 
-test("api_update new->open records an api_update row (user set, no post, duration>=0)", async () => {
-  const { topicId } = await createTopic(cfg.admin);
-  const res = await setFields(topicId, { status: "open" });
-  eq(res.status, 200, "PUT status code");
-  eq((await customFields(topicId)).status, "open", "status after PUT");
-  const rows = await historyRows(topicId);
-  eq(rows.length, 1, "row count");
-  const r = rows[0];
-  eq(r.from_status, "new", "from_status");
-  eq(r.to_status, "open", "to_status");
-  eq(r.source, "api_update", "source");
-  eq(num(r.user_id), adminId, "user_id = acting admin");
-  eq(r.post_id, null, "post_id is null");
-  assert(num(r.duration) >= 0, `duration >= 0 (got ${r.duration})`);
-});
+// --- api_update: every ordered (from -> to) status pair ---
+for (const from of STATUSES) {
+  for (const to of STATUSES) {
+    if (from === to) continue;
+    test(`api_update transition ${from} -> ${to}`, async () => {
+      const topicId = await freshTopic(); // status "new"
+      let expected = 0;
+      if (from !== "new") {
+        await seed(topicId, { status: from }); // new -> from
+        expected += 1;
+      }
+      eq((await setFields(topicId, { status: to })).status, 200, `PUT ${from}->${to}`);
+      expected += 1;
+      eq((await customFields(topicId)).status, to, "status after PUT");
+      const rows = await historyRows(topicId);
+      eq(rows.length, expected, "row count");
+      const r = rows.at(-1);
+      eq(r.from_status, from, "from_status");
+      eq(r.to_status, to, "to_status");
+      eq(r.source, "api_update", "source");
+      eq(num(r.user_id), adminId, "user_id = acting admin");
+      eq(r.post_id, null, "post_id null");
+      assert(num(r.duration) >= 0, `duration >= 0 (got ${r.duration})`);
+    });
+  }
+}
 
-test("api_update with invalid status is rejected (422) and records nothing", async () => {
-  const { topicId } = await createTopic(cfg.admin);
-  const res = await setFields(topicId, { status: "bogus" });
-  eq(res.status, 422, "PUT status code for invalid status");
+// --- api_update edge cases ---
+test("api_update with an invalid status is rejected (422) and records nothing", async () => {
+  const topicId = await freshTopic();
+  eq((await setFields(topicId, { status: "bogus" })).status, 422, "422 for invalid status");
   eq((await customFields(topicId)).status, "new", "status unchanged");
-  eq((await historyRows(topicId)).length, 0, "no rows written");
+  eq((await historyRows(topicId)).length, 0, "no rows");
 });
 
-test("api_update that doesn't change status records no row", async () => {
-  const { topicId } = await createTopic(cfg.admin);
-  await setFields(topicId, { status: "open" }); // row 1
-  const res = await setFields(topicId, { priority: "high" }); // no status change
-  eq(res.status, 200, "PUT status code");
+test("api_update that changes no status records no row", async () => {
+  const topicId = await freshTopic();
+  await seed(topicId, { status: "open" }); // 1 row
+  eq((await setFields(topicId, { priority: "high" })).status, 200, "PUT ok");
   eq((await historyRows(topicId)).length, 1, "still exactly one row");
 });
 
-test("customer reply reopens a snoozed topic and records a post_creation row", async () => {
-  const { topicId } = await createTopic(cfg.admin);
-  eq((await setFields(topicId, { status: "snoozed", assignee_id: customerId })).status, 200, "precondition PUT");
+test("api_update attributes the row to the pre-change assignee", async () => {
+  const topicId = await freshTopic();
+  await seed(topicId, { status: "open", assignee_id: customerId }); // assigned to customer
+  eq((await setFields(topicId, { status: "closed", assignee_id: "" })).status, 200, "close + unassign");
+  eq((await customFields(topicId)).status, "closed", "closed");
+  const r = (await historyRows(topicId)).at(-1);
+  eq(r.from_status, "open", "from");
+  eq(r.to_status, "closed", "to");
+  eq(num(r.assignee_id), customerId, "row attributed to the pre-change assignee");
+});
+
+// --- post_created: customer (non-admin) replies ---
+test("customer reply reopens a snoozed topic -> open (post_creation row)", async () => {
+  const topicId = await freshTopic();
+  await seed(topicId, { status: "snoozed", assignee_id: customerId }); // 1 row
   const { postId } = await reply(cfg.customer, topicId);
-  eq((await customFields(topicId)).status, "open", "reopened to open");
+  eq((await customFields(topicId)).status, "open", "reopened");
   const rows = await historyRows(topicId);
-  const last = rows[rows.length - 1];
-  eq(last.from_status, "snoozed", "from_status");
-  eq(last.to_status, "open", "to_status");
-  eq(last.source, "post_creation", "source");
-  eq(num(last.post_id), postId, "post_id = triggering reply");
-  eq(last.user_id, null, "user_id is null for post_creation");
-  eq(num(last.assignee_id), customerId, "assignee_id = pre-change assignee");
+  eq(rows.length, 2, "seed + reopen");
+  const r = rows.at(-1);
+  eq(r.from_status, "snoozed", "from");
+  eq(r.to_status, "open", "to");
+  eq(r.source, "post_creation", "source");
+  eq(num(r.post_id), postId, "post_id = reply");
+  eq(r.user_id, null, "user_id null");
+  eq(num(r.assignee_id), customerId, "assignee = pre-change");
 });
 
-test("admin whisper reopens a closed topic and records a post_creation row", async () => {
-  const { topicId } = await createTopic(cfg.admin);
-  await setFields(topicId, { status: "open" });
-  eq(
-    (await setFields(topicId, { status: "closed", last_assigned_to_id: customerId })).status,
-    200,
-    "precondition closed PUT",
-  );
-  const { postType } = await reply(cfg.admin, topicId, { whisper: true });
-  if (Number(postType) !== 4) skip("whispers not enabled on this instance");
+test("customer reply reopens a recently-closed, assigned topic -> open + reassign", async () => {
+  const topicId = await freshTopic();
+  await seed(topicId, { status: "closed", last_assigned_to_id: customerId, closed_at: iso(Date.now()) });
+  const { postId } = await reply(cfg.customer, topicId);
   const cf = await customFields(topicId);
-  assert(cf.status === "open" || cf.status === "new", `reopened away from closed (got ${cf.status})`);
-  const last = (await historyRows(topicId)).at(-1);
-  eq(last.from_status, "closed", "from_status");
-  eq(last.to_status, cf.status, "to_status matches topic");
-  eq(last.source, "post_creation", "source");
+  eq(cf.status, "open", "reopened to open");
+  eq(num(cf.assignee_id), customerId, "reassigned to the last assignee");
+  const r = (await historyRows(topicId)).at(-1);
+  eq(r.from_status, "closed", "from");
+  eq(r.to_status, "open", "to");
+  eq(num(r.post_id), postId, "post_id");
+  eq(r.assignee_id, null, "row attributed to pre-change assignee (none)");
 });
 
-test("admin regular reply changes no status and records no new row", async () => {
-  const { topicId } = await createTopic(cfg.admin);
-  await setFields(topicId, { status: "open", waiting_since: new Date().toISOString(), waiting_id: customerId });
-  const before = (await historyRows(topicId)).length;
-  await reply(cfg.admin, topicId); // clears waiting_*, leaves status "open"
-  eq((await customFields(topicId)).status, "open", "status unchanged");
-  eq((await historyRows(topicId)).length, before, "no new row");
+test("customer reply reopens a closed topic with no last assignee -> new", async () => {
+  const topicId = await freshTopic();
+  await seed(topicId, { status: "closed", closed_at: iso(Date.now()) });
+  await reply(cfg.customer, topicId);
+  eq((await customFields(topicId)).status, "new", "reopened to new");
+  eq((await historyRows(topicId)).at(-1).to_status, "new", "row to=new");
 });
 
-test("all valid statuses are accepted by the endpoint", async () => {
-  for (const s of ["open", "snoozed", "closed", "new"]) {
-    const { topicId } = await createTopic(cfg.admin);
-    if (s === "new") await setFields(topicId, { status: "open" }); // avoid new->new no-op
-    eq((await setFields(topicId, { status: s })).status, 200, `status '${s}' accepted`);
-    eq((await customFields(topicId)).status, s, `status set to '${s}'`);
-  }
+test("customer reply reopens a >1-month-closed topic -> new despite a last assignee", async () => {
+  const topicId = await freshTopic();
+  const twoMonthsAgo = iso(Date.now() - 62 * 24 * 3600 * 1000);
+  await seed(topicId, { status: "closed", last_assigned_to_id: customerId, closed_at: twoMonthsAgo });
+  await reply(cfg.customer, topicId);
+  eq((await customFields(topicId)).status, "new", "stale close reopens to new");
+  eq((await historyRows(topicId)).at(-1).to_status, "new", "row to=new");
+});
+
+test("customer reply to an open topic sets waiting_* and records no row", async () => {
+  const topicId = await freshTopic();
+  await seed(topicId, { status: "open" }); // 1 row
+  await reply(cfg.customer, topicId);
+  const cf = await customFields(topicId);
+  eq(cf.status, "open", "status unchanged");
+  eq(num(cf.waiting_id), customerId, "waiting_id set to customer");
+  assert(cf.waiting_since, "waiting_since set");
+  eq((await historyRows(topicId)).length, 1, "no new row");
+});
+
+test("customer reply to a new topic sets waiting_* and records no row", async () => {
+  const topicId = await freshTopic(); // status "new", 0 rows
+  await reply(cfg.customer, topicId);
+  const cf = await customFields(topicId);
+  eq(cf.status, "new", "status unchanged");
+  eq(num(cf.waiting_id), customerId, "waiting_id set");
+  eq((await historyRows(topicId)).length, 0, "no row");
+});
+
+// --- post_created: admin whisper (post_type 4); skipped if whispers are disabled ---
+test("admin whisper reopens a snoozed topic -> open", async () => {
+  const topicId = await freshTopic();
+  await seed(topicId, { status: "snoozed" });
+  const { postType } = await reply(cfg.admin, topicId, { whisper: true });
+  if (Number(postType) !== 4) skip("whispers not enabled");
+  eq((await customFields(topicId)).status, "open", "reopened");
+  const r = (await historyRows(topicId)).at(-1);
+  eq(r.from_status, "snoozed", "from");
+  eq(r.to_status, "open", "to");
+  eq(r.source, "post_creation", "source");
+});
+
+test("admin whisper reopens a closed, assigned topic -> open", async () => {
+  const topicId = await freshTopic();
+  await seed(topicId, { status: "closed", last_assigned_to_id: customerId });
+  const { postType } = await reply(cfg.admin, topicId, { whisper: true });
+  if (Number(postType) !== 4) skip("whispers not enabled");
+  eq((await customFields(topicId)).status, "open", "reopened to open");
+  eq((await historyRows(topicId)).at(-1).to_status, "open", "row to=open");
+});
+
+test("admin whisper reopens a closed topic with no last assignee -> new", async () => {
+  const topicId = await freshTopic();
+  await seed(topicId, { status: "closed" });
+  const { postType } = await reply(cfg.admin, topicId, { whisper: true });
+  if (Number(postType) !== 4) skip("whispers not enabled");
+  eq((await customFields(topicId)).status, "new", "reopened to new");
+  eq((await historyRows(topicId)).at(-1).to_status, "new", "row to=new");
+});
+
+test("admin whisper on an open topic changes nothing and records no row", async () => {
+  const topicId = await freshTopic();
+  await seed(topicId, { status: "open" }); // 1 row
+  const { postType } = await reply(cfg.admin, topicId, { whisper: true });
+  if (Number(postType) !== 4) skip("whispers not enabled");
+  eq((await customFields(topicId)).status, "open", "unchanged");
+  eq((await historyRows(topicId)).length, 1, "no new row");
+});
+
+// --- post_created: admin regular reply ---
+test("admin regular reply clears waiting_* and records no row", async () => {
+  const topicId = await freshTopic();
+  await seed(topicId, { status: "open", waiting_since: iso(Date.now()), waiting_id: customerId }); // 1 row
+  await reply(cfg.admin, topicId);
+  const cf = await customFields(topicId);
+  eq(cf.status, "open", "status unchanged");
+  assert(cf.waiting_id == null, "waiting_id cleared");
+  eq((await historyRows(topicId)).length, 1, "no new row");
 });
 
 // ---- runner ----
