@@ -13,7 +13,7 @@ module ::CommunityCustomFields
   CUSTOM_FIELDS = {
     assignee_id: :integer,
     first_assigned_to_id: :integer,
-    first_assigned_at: :datetime, 
+    first_assigned_at: :datetime,
     last_assigned_to_id: :integer,
     last_assigned_at: :datetime,
     account_name: :string,
@@ -26,11 +26,13 @@ module ::CommunityCustomFields
     closed_at: :datetime,
     snoozed_until: :datetime,
     waiting_since: :datetime,
-    waiting_id: :integer
+    waiting_id: :integer,
   }
+
+  STATUSES = %w[new open snoozed closed]
 end
 
-require_relative 'lib/community_custom_fields/engine.rb'
+require_relative "lib/community_custom_fields/engine.rb"
 
 after_initialize do
   CommunityCustomFields::CUSTOM_FIELDS.each do |name, type|
@@ -38,7 +40,7 @@ after_initialize do
   end
 
   TopicList.preloaded_custom_fields.merge(CommunityCustomFields::CUSTOM_FIELDS.keys)
-  
+
   add_to_serializer(:topic_view, :custom_fields) do
     object.topic.custom_fields.slice(*CommunityCustomFields::CUSTOM_FIELDS.keys)
   end
@@ -62,9 +64,13 @@ after_initialize do
     next if user.id <= 0
     next unless post.post_type == 1 || post.post_type == 4
     next if post.post_number == 1
-    
+
     topic = post.topic
     topic.custom_fields[:status] ||= "new"
+    previous_status = topic.custom_fields[:status]
+    previous_assignee_id = topic.custom_fields[:assignee_id]
+    previous_status_at =
+      TopicCustomField.where(topic_id: topic.id, name: "status").pick(:created_at)
 
     if user.admin && post.post_type == 1
       topic.custom_fields[:waiting_since] = nil
@@ -86,11 +92,11 @@ after_initialize do
           topic.custom_fields[:assignee_id] = topic.custom_fields[:last_assigned_to_id]
           topic.custom_fields[:last_assigned_at] = Time.current.iso8601
         end
-        
+
         topic.custom_fields[:outcome] = nil
         topic.custom_fields[:closed_at] = nil
       end
-    else 
+    else
       if user.id != topic.custom_fields[:waiting_id].to_i
         topic.custom_fields[:waiting_since] = Time.current.iso8601
         topic.custom_fields[:waiting_id] = user.id
@@ -105,19 +111,29 @@ after_initialize do
         # this handles an edge case where `closed_at` was never set
         topic.custom_fields[:closed_at] ||= Time.current.iso8601
 
-        if topic.custom_fields[:last_assigned_to_id].nil? || Time.iso8601(topic.custom_fields[:closed_at]) < 1.month.ago.iso8601
+        if topic.custom_fields[:last_assigned_to_id].nil? ||
+             Time.iso8601(topic.custom_fields[:closed_at]) < 1.month.ago.iso8601
           topic.custom_fields[:status] = "new"
         else
           topic.custom_fields[:status] = "open"
           topic.custom_fields[:assignee_id] = topic.custom_fields[:last_assigned_to_id]
           topic.custom_fields[:last_assigned_at] = Time.current.iso8601
         end
-        
+
         topic.custom_fields[:outcome] = nil
         topic.custom_fields[:closed_at] = nil
       end
     end
-    
+
     topic.save_custom_fields
+
+    CommunityCustomFields::TopicStatusChange.record(
+      topic: topic,
+      from_status: previous_status,
+      source: "post_creation",
+      assignee_id: previous_assignee_id,
+      post_id: post.id,
+      previous_status_at: previous_status_at,
+    )
   end
 end
