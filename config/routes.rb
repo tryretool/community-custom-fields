@@ -1,9 +1,7 @@
 # frozen_string_literal: true
 
-CommunityCustomFields::Engine.routes.draw do
-  put '/:topic_id' => 'custom_fields#update'
-end
+CommunityCustomFields::Engine.routes.draw { put "/:topic_id" => "custom_fields#update" }
 
 Discourse::Application.routes.draw do
-  mount ::CommunityCustomFields::Engine, at: '/admin/plugins/community-custom-fields'
+  mount ::CommunityCustomFields::Engine, at: "/admin/plugins/community-custom-fields"
 end
